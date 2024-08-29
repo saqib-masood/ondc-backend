@@ -21,7 +21,6 @@ data:
   config.json: |
     {
       "projectID": "${project_id}",
-      "topicID": "${pubsub.prefix}-send",
       "port": ${port},
       "ONDCEnvironment": "${ondc_environment}"
     }

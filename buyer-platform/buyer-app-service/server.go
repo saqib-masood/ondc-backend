@@ -60,12 +60,12 @@ func main() {
 		log.Exit(err)
 	}
 
-	pubsubClient, err := pubsub.NewClient(ctx, conf.ProjectID)
-	if err != nil {
-		log.Exit(err)
-	}
+	// pubsubClient, err := pubsub.NewClient(ctx, conf.ProjectID)
+	// if err != nil {
+	// 	log.Exit(err)
+	// }
 
-	srv, err := initServer(ctx, conf, pubsubClient)
+	srv, err := initServer(ctx, conf,nil)
 	if err != nil {
 		log.Exit(err)
 	}
@@ -80,18 +80,18 @@ func main() {
 }
 
 func initServer(ctx context.Context, conf config.BuyerAppConfig, pubsubClient *pubsub.Client) (*server, error) {
-	topic := pubsubClient.Topic(conf.TopicID)
-	exist, err := topic.Exists(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("init server: checking if the topic %q exists: %v", conf.TopicID, err)
-	}
-	if !exist {
-		return nil, fmt.Errorf("init server: topic %q does not exist", conf.TopicID)
-	}
+	// topic := pubsubClient.Topic(conf.TopicID)
+	// exist, err := topic.Exists(ctx)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("init server: checking if the topic %q exists: %v", conf.TopicID, err)
+	// }
+	// if !exist {
+	// 	return nil, fmt.Errorf("init server: topic %q does not exist", conf.TopicID)
+	// }
 
 	srv := &server{
 		pubsubClient: pubsubClient,
-		topic:        topic,
+		// topic:        topic,
 		conf:         conf,
 	}
 

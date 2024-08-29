@@ -1,4 +1,4 @@
-{
+ {
   "port": 8080,
   "subscriberID": "test",
   "projectID": "bit-ondc",
@@ -10,5 +10,8 @@
   "bapURLs": [
     "http://10.128.0.28:8001"
   ],
-  "keyID": "22a8a67a-76d9-459b-867c-085dda2939ec"
+  "keyID": "22a8a67a-76d9-459b-867c-085dda2939ec",
+  "topicID": "your_topic_id",
+  "instanceID": "your_instance_id",
+  "databaseID": "your_database_id"
 }

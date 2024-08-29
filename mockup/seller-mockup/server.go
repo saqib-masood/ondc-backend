@@ -66,6 +66,7 @@ type server struct {
 
 func main() {
 	flag.Set("alsologtostderr", "true")
+    log.Println("Logging to standard error enabled")
 
 	configPath, ok := os.LookupEnv("CONFIG")
 	if !ok {

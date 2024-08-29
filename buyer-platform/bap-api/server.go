@@ -25,7 +25,8 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"time"
+	// "time"
+	
 
 	"cloud.google.com/go/pubsub"
 	"github.com/benbjohnson/clock"
@@ -44,11 +45,8 @@ const psMsgIDHeader = "Pubsub-Message-ID"
 var validate = model.Validator()
 
 type server struct {
-	pubsubClient      *pubsub.Client
-	topic             *pubsub.Topic
 	mux               http.Handler
 	port              int
-	transactionClient *transactionclient.Client
 }
 
 func main() {
@@ -60,27 +58,21 @@ func main() {
 		log.Exit("CONFIG env is not set")
 	}
 
+	log.Infof("CONFIG environment variable is set to: %s\n", configPath)
+
+	log.Info("Attempting to read configuration file")
 	conf, err := config.Read[config.BAPAPIConfig](configPath)
 	if err != nil {
-		log.Exit(err)
+		log.Exitf("Failed to read configuration file: %v", err)
 	}
+	log.Info("Configuration file read successfully")
 
 	registryClient, err := registryclient.New(conf.RegistryURL, conf.ONDCEnvironment)
 	if err != nil {
 		log.Exit(err)
 	}
 
-	pubsubClient, err := pubsub.NewClient(ctx, conf.ProjectID)
-	if err != nil {
-		log.Exit(err)
-	}
-
-	transactionClient, err := transactionclient.New(ctx, conf.ProjectID, conf.InstanceID, conf.DatabaseID)
-	if err != nil {
-		log.Exit(err)
-	}
-
-	srv, err := initServer(ctx, conf, pubsubClient, registryClient, transactionClient, clock.New())
+	srv, err := initServer(ctx, conf, nil, registryClient, nil, clock.New())
 	if err != nil {
 		log.Exit(err)
 	}
@@ -95,31 +87,12 @@ func main() {
 }
 
 func initServer(ctx context.Context, conf config.BAPAPIConfig, pubsubClient *pubsub.Client, registryClient middleware.RegistryClient, transactionClient *transactionclient.Client, clk clock.Clock) (*server, error) {
-	// validate clients
-	if pubsubClient == nil {
-		return nil, errors.New("init server: Pub/Sub client is nil")
-	}
 	if registryClient == nil {
 		return nil, errors.New("init server: registry client is nil")
 	}
-	if transactionClient == nil {
-		return nil, errors.New("init server: transaction client is nil")
-	}
-
-	topic := pubsubClient.Topic(conf.TopicID)
-	exist, err := topic.Exists(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("init server: %v", err)
-	}
-	if !exist {
-		return nil, fmt.Errorf("init server: topic %q does not exist", conf.TopicID)
-	}
 
 	srv := &server{
-		pubsubClient:      pubsubClient,
-		topic:             topic,
 		port:              conf.Port,
-		transactionClient: transactionClient,
 	}
 
 	mux := http.NewServeMux()
@@ -211,21 +184,8 @@ func (s *server) serve() error {
 	return http.ListenAndServe(addr, s.mux)
 }
 
-// publishMessage publishes incoming request to the topic and return the publishing result.
-func (s *server) publishMessage(ctx context.Context, body []byte, action string) (msgID string, err error) {
-	msg := &pubsub.Message{
-		Data: body,
-		Attributes: map[string]string{
-			"action": action,
-		},
-	}
-	result := s.topic.Publish(ctx, msg)
-	return result.Get(ctx)
-}
-
 // genericHandler can handles all kind of ONDC request.
 func genericHandler[R model.BAPRequest](s *server, action string, w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -245,51 +205,13 @@ func genericHandler[R model.BAPRequest](s *server, action string, w http.Respons
 
 		errType := "JSON-SCHEMA-ERROR"
 		errCode := strconv.Itoa(errCodeInt)
-		if err := s.storeTransaction(ctx, action, "NACK", payload, payload.GetContext(), errType, errCode, err.Error()); err != nil {
-			log.Errorf("Store transaction for invalid request failed: %v", err)
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(err.Error()))
-			return
-		}
 
 		nackResponse(w, errType, errCode)
 		return
 	}
 
-	if err := s.storeTransaction(ctx, action, "ACK", payload, payload.GetContext(), "", "", ""); err != nil {
-		log.Errorf("Store transaction for valid request failed: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
-		return
-	}
-
-	msgID, err := s.publishMessage(ctx, body, action)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Errorf("Publish Pub/Sub message: %v", err)
-		return
-	}
-	w.Header().Set(psMsgIDHeader, msgID)
-
 	ackResponse(w)
 	log.Infof("Successfully ack request: TransactionID: %q, MessageID: %q", *payload.GetContext().TransactionID, *payload.GetContext().MessageID)
-}
-
-func (s *server) storeTransaction(ctx context.Context, action, status string, payload any, msgContext model.Context, errType, errCode, errMsg string) error {
-	transactionData := transactionclient.TransactionData{
-		ID:              *msgContext.TransactionID,
-		Type:            "CALLBACK-ACTION",
-		API:             action,
-		MessageID:       *msgContext.MessageID,
-		Payload:         payload,
-		ProviderID:      msgContext.BppID,
-		MessageStatus:   status,
-		ErrorCode:       errCode,
-		ErrorType:       errType,
-		ErrorMessage:    errMsg,
-		ReqReceivedTime: time.Now(),
-	}
-	return s.transactionClient.StoreTransaction(ctx, transactionData)
 }
 
 func (s *server) onSearchHandler(w http.ResponseWriter, r *http.Request) {
